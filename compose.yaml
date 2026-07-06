@@ -1,0 +1,135 @@
+# GAÜN Kampüs Haritası — yerel geliştirme yığını (PHP + MariaDB)
+# Kullanım:  docker compose up -d --build
+# Harita:    http://localhost:8080
+# Panel:     http://localhost:8080/bordo/
+# Apache DocumentRoot: /var/www/html/public
+
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-dev_root_pw}
+      MARIADB_DATABASE: ${DB_NAME:-gau_kampus}
+    volumes:
+      - dbdata:/var/lib/mysql
+      # İlk açılışta (boş dbdata volume'ünde) sırayla çalışır: taban şema,
+      # tablolar/kolonlar, uygulama DB hesapları ve başlangıç konum verisi
+      # (09-baslangic-verisi.sql — 229 konum, harita dolu açılır). Var olan
+      # volume'lerde otomatik ÇALIŞMAZ — bkz. README "Migration'lar".
+      - ./docker/init/00-schema.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
+      - ./docker/init/01-analytics.sql:/docker-entrypoint-initdb.d/01-analytics.sql:ro
+      - ./docker/init/02-location-i18n.sql:/docker-entrypoint-initdb.d/02-location-i18n.sql:ro
+      - ./docker/init/03-admin-ops.sql:/docker-entrypoint-initdb.d/03-admin-ops.sql:ro
+      - ./docker/init/01-users.sql:/docker-entrypoint-initdb.d/04-users.sql:ro
+      - ./docker/init/05-audit-log.sql:/docker-entrypoint-initdb.d/05-audit-log.sql:ro
+      - ./docker/init/06-location-active.sql:/docker-entrypoint-initdb.d/06-location-active.sql:ro
+      - ./docker/init/07-user-roles.sql:/docker-entrypoint-initdb.d/07-user-roles.sql:ro
+      - ./docker/init/08-data-quality-default-images.sql:/docker-entrypoint-initdb.d/08-data-quality-default-images.sql:ro
+      - ./docker/init/09-baslangic-verisi.sql:/docker-entrypoint-initdb.d/09-baslangic-verisi.sql:ro
+    ports:
+      - "3307:3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  web:
+    build: ./docker
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./:/var/www/html
+    ports:
+      - "8080:80"
+    environment:
+      DB_HOST: ${DB_HOST:-db}
+      DB_NAME: ${DB_NAME:-gau_kampus}
+      DB_READ_USER: ${DB_READ_USER:-gau_read}
+      DB_READ_PASS: ${DB_READ_PASS:-dev_read_pw}
+      DB_WRITE_USER: ${DB_WRITE_USER:-gau_write}
+      DB_WRITE_PASS: ${DB_WRITE_PASS:-dev_write_pw}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      OSRM_BASE_URL: ${OSRM_BASE_URL:-https://router.project-osrm.org}
+      OSRM_WALK_PROFILE: ${OSRM_WALK_PROFILE:-foot}
+      OSRM_DRIVE_PROFILE: ${OSRM_DRIVE_PROFILE:-driving}
+      OSRM_TIMEOUT_MS: ${OSRM_TIMEOUT_MS:-4000}
+      # Boşsa (varsayılan) genel OSRM_BASE_URL kullanılır. Doldurulursa (bkz.
+      # osrm-car/osrm-foot servisleri) her mod kendi gerçek profiliyle
+      # (araç yolu / yaya yolu) rota alır — genel demo sunucusu profili
+      # yok sayıp tek tip rota döndürdüğü için bu ayrım önemlidir.
+      OSRM_DRIVE_BASE_URL: ${OSRM_DRIVE_BASE_URL:-}
+      OSRM_WALK_BASE_URL: ${OSRM_WALK_BASE_URL:-}
+
+  # Veri hazırlığı adım 1/2: Türkiye OSM verisini indirir, Gaziantep iline
+  # kırpar. `docker compose up` sırasında OTOMATİK BAŞLAMAZ (profiles: tools)
+  # — elle çalıştırılır:  docker compose run --rm osrm-download
+  # (osrm-backend imajı Debian 9/stretch tabanlı ve apt depoları arşivlendiği
+  # için indirme burada, güncel bir Debian tabanlı ayrı imajla yapılır.)
+  osrm-download:
+    build: ./docker/osrm
+    profiles: ["tools"]
+    volumes:
+      - osrmdata:/data
+
+  # Veri hazırlığı adım 2/2: car+foot profillerini osrm-extract/partition/
+  # customize ile işler. Resmi osrm-backend imajı DOĞRUDAN kullanılır (apt
+  # gerekmez); process.sh salt-okunur bind-mount edilir.
+  #   docker compose run --rm osrm-process
+  osrm-process:
+    image: osrm/osrm-backend:latest
+    profiles: ["tools"]
+    volumes:
+      - osrmdata:/data
+      - ./docker/osrm/process.sh:/process.sh:ro
+    entrypoint: ["/bin/sh", "/process.sh"]
+
+  # Gerçek araç (yol ağı) rotalaması. osrm-process çalıştırılmadan başlarsa
+  # veri dosyası bulunamadığı için yeniden başlar (restart: unless-stopped);
+  # veri hazır olunca otomatik ayağa kalkar.
+  osrm-car:
+    image: osrm/osrm-backend:latest
+    restart: unless-stopped
+    volumes:
+      - osrmdata:/data
+    entrypoint: ["osrm-routed", "--algorithm", "mld", "/data/car/gaziantep.osrm"]
+    ports:
+      - "5001:5000"
+
+  # Gerçek yaya (patika/kaldırım ağı) rotalaması.
+  osrm-foot:
+    image: osrm/osrm-backend:latest
+    restart: unless-stopped
+    volumes:
+      - osrmdata:/data
+    entrypoint: ["osrm-routed", "--algorithm", "mld", "/data/foot/gaziantep.osrm"]
+    ports:
+      - "5002:5000"
+
+  sync:
+    build: ./docker
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./:/var/www/html
+    environment:
+      DB_HOST: ${DB_HOST:-db}
+      DB_NAME: ${DB_NAME:-gau_kampus}
+      DB_READ_USER: ${DB_READ_USER:-gau_read}
+      DB_READ_PASS: ${DB_READ_PASS:-dev_read_pw}
+      DB_WRITE_USER: ${DB_WRITE_USER:-gau_write}
+      DB_WRITE_PASS: ${DB_WRITE_PASS:-dev_write_pw}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      TZ: ${TZ:-Europe/Istanbul}
+      SYNC_RUN_AT: ${SYNC_RUN_AT:-05:10}
+      SYNC_RUN_ON_START: ${SYNC_RUN_ON_START:-false}
+    command: ["sh", "/var/www/html/docker/sync-scheduler.sh"]
+
+volumes:
+  dbdata:
+  osrmdata:

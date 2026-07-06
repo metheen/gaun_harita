@@ -1,0 +1,17 @@
+[Unit]
+Description=GAUN Kampus Haritasi Docker Compose stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/gaunharita
+Environment=COMPOSE_PROFILES=
+ExecStart=/usr/bin/docker compose --env-file /opt/gaunharita/.env -f /opt/gaunharita/deploy/compose.prod.yaml up -d --remove-orphans
+ExecStop=/usr/bin/docker compose --env-file /opt/gaunharita/.env -f /opt/gaunharita/deploy/compose.prod.yaml down
+RemainAfterExit=yes
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

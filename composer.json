@@ -1,0 +1,22 @@
+{
+    "name": "gaun/kampus-haritasi",
+    "description": "GAÜN Kampüs Haritası — PHP test paketi",
+    "type": "project",
+    "license": "proprietary",
+    "require-dev": {
+        "phpunit/phpunit": "^11.5"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/php/",
+            "Tests\\Integration\\": "tests/php-integration/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test:integration": "phpunit -c phpunit.integration.xml.dist"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

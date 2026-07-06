@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <div class="etkinlikler">
+
+    <!-- Geçmiş etkinlik: 2026-06-01 referans tarihinden ÖNCE -> filtrelenmeli. -->
+    <div class="event">
+      <div class="date">01</div>
+      <div class="month">Ocak<br>2026</div>
+      <div class="event-title"><a href="javascript:ac(100);">Geçmiş Etkinlik</a></div>
+    </div>
+
+    <!-- Gelecek etkinlik, başlık tek tırnakla sarılmış -> tırnaklar silinmeli. -->
+    <div class="event">
+      <div class="date">15</div>
+      <div class="month">Ağustos<br>2026</div>
+      <div class="event-title"><a href="javascript:ac(101);">'Kariyer Günü'</a></div>
+    </div>
+
+    <!-- Gelecek etkinlik, sıradan başlık. -->
+    <div class="event">
+      <div class="date">04</div>
+      <div class="month">Temmuz<br>2026</div>
+      <div class="event-title"><a href="javascript:ac(202);">Mezuniyet Töreni</a></div>
+    </div>
+
+    <!-- Bozuk blok: ay div'i eksik -> atlanmalı, diğerlerini bozmamalı. -->
+    <div class="event">
+      <div class="date">20</div>
+      <div class="event-title"><a href="javascript:ac(303);">Eksik Ay Bilgisi</a></div>
+    </div>
+
+  </div>
+</body>
+</html>

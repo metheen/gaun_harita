@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --color-on-primary: 255 255 255;
+    --color-inverse-on-surface: 241 244 236;
+    --color-surface-container-highest: 223 228 215;
+    --color-surface-container: 237 240 231;
+    --color-secondary-container: 221 230 210;
+    --color-surface-container-low: 243 245 238;
+    --color-outline-variant: 196 200 188;
+    --color-primary-container: 188 226 155;
+    --color-surface-container-lowest: 255 255 255;
+    --color-outline: 111 119 103;
+    --color-surface-variant: 224 228 216;
+    --color-on-primary-fixed-variant: 38 80 10;
+    --color-tertiary: 92 95 97;
+    --color-surface-dim: 216 220 208;
+    --color-on-secondary-container: 63 74 58;
+    --color-on-error: 255 255 255;
+    --color-background: 248 249 244;
+    --color-on-surface-variant: 66 73 60;
+    --color-on-background: 25 29 21;
+    --color-error: 186 26 26;
+    --color-on-primary-container: 39 82 11;
+    --color-error-container: 255 218 214;
+    --color-secondary: 81 95 116;
+    --color-surface: 248 249 244;
+    --color-primary: 61 105 34;
+    --color-surface-container-high: 231 235 224;
+    --color-on-surface: 25 29 21;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --color-on-primary: 14 36 5;
+    --color-inverse-on-surface: 35 42 34;
+    --color-surface-container-highest: 51 60 49;
+    --color-surface-container: 34 41 33;
+    --color-secondary-container: 52 63 48;
+    --color-surface-container-low: 28 34 27;
+    --color-outline-variant: 81 90 76;
+    --color-primary-container: 55 89 35;
+    --color-surface-container-lowest: 16 20 16;
+    --color-outline: 168 178 156;
+    --color-surface-variant: 58 66 53;
+    --color-on-primary-fixed-variant: 220 246 198;
+    --color-tertiary: 178 183 185;
+    --color-surface-dim: 15 18 15;
+    --color-on-secondary-container: 220 231 211;
+    --color-on-error: 255 255 255;
+    --color-background: 18 22 17;
+    --color-on-surface-variant: 199 209 190;
+    --color-on-background: 234 239 229;
+    --color-error: 255 180 171;
+    --color-on-primary-container: 220 246 198;
+    --color-error-container: 105 0 5;
+    --color-secondary: 170 186 211;
+    --color-surface: 22 27 22;
+    --color-primary: 151 207 113;
+    --color-surface-container-high: 41 49 40;
+    --color-on-surface: 234 239 229;
+  }
+}

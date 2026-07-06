@@ -1,0 +1,75 @@
+# Hassas / gereksiz dosyalar
+.bash_history
+db.dump
+*.dump
+*.bak
+*.backup
+backups/
+storage/
+coverage/
+# *.sql varsayılan olarak yok sayılır (DB dump/seed veri riski taşıyabilir).
+# docker/init/ altındaki migration'lar tek tek istisna edilir; her yeni
+# migration eklendiğinde (bkz. README "Migration'lar") buraya da eklenmeli.
+# Not: 01-users.sql yalnızca YEREL GELİŞTİRME için açıkça işaretlenmiş
+# varsayılan parolalar içerir (dev_read_pw/dev_write_pw) — üretimde bu
+# hesaplar README'deki talimatla elle, güçlü parolalarla oluşturulur.
+*.sql
+!docker/init/00-schema.sql
+!docker/init/01-analytics.sql
+!docker/init/01-users.sql
+!docker/init/02-location-i18n.sql
+!docker/init/03-admin-ops.sql
+!docker/init/05-audit-log.sql
+!docker/init/06-location-active.sql
+!docker/init/07-user-roles.sql
+!docker/init/08-data-quality-default-images.sql
+!docker/init/09-baslangic-verisi.sql
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Web kökü dışında tutulan hassas içerik
+private/
+
+# Yerel ortam / sırlar — .env.example İSTİSNA, gerçek değer İÇEREN hiçbir
+# .env varyantı commit edilmemeli (bkz. video: sızan .env dosyalarından API
+# anahtarı toplanıp faturalandırma istismarı — bu proje hiçbir zaman .env
+# commit ETMEMELİ).
+.env
+.env.*
+!.env.example
+.DS_Store
+node_modules/
+.npm-cache/
+.cache/
+.parcel-cache/
+.vite/
+.gstack/
+.claude/
+.idea/
+.vscode/
+
+# TLS/SSH özel anahtarları — docker/certs/ şu an yalnızca public bir CA
+# sertifikası içeriyor (güvenli, commit edilebilir); ileride bir private key
+# eklenirse ASLA commit edilmemeli.
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Test/derleme çıktıları (composer.lock/package-lock.json commit edilir,
+# tekrarlanabilir kurulum için — yalnızca üretilen klasörler yok sayılır)
+vendor/
+.phpunit.cache/
+.phpunit.integration.cache/
+test-results/
+playwright-report/
+blob-report/
+
+# Yönetim panelinden yüklenen yeni konum görselleri genellikle ortam verisidir.
+# Repo için gerekli placeholder/logo dosyaları istisna kalır.
+public/uploads/locations/*
+!public/uploads/locations/.gitignore
+!public/uploads/locations/.htaccess

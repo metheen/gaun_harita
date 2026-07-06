@@ -1,0 +1,20 @@
+# Savunma katmanı: hassas dosyalara doğrudan HTTP erişimini engeller.
+# (Birincil koruma: bu dosyaları web kökünün DIŞINDA tutmaktır — bkz. private/.)
+
+# Nokta ile başlayan tüm dosyalar (.env, .htaccess, .git, .bash_history ...)
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# Yedek / döküm / günlük / şablon uzantıları
+<FilesMatch "\.(dump|sql|log|bak|dist|example)$">
+    Require all denied
+</FilesMatch>
+
+# Doğrudan çağrılmaması gereken PHP dahilleri (giriş noktaları hariç)
+<FilesMatch "^(config|db|bootstrap|auth|csrf|helpers|layout_header|layout_footer)\.php$">
+    Require all denied
+</FilesMatch>
+
+# private/ klasörünün tamamına erişimi kapat
+RedirectMatch 404 ^/private/

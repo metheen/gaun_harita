@@ -1,0 +1,9 @@
+Options -Indexes -ExecCGI
+
+# Uploaded files are static media only. Never execute scripts from this tree.
+<FilesMatch "\.(php|phtml|phar|cgi|pl|py|sh|asp|aspx|jsp)$">
+    Require all denied
+</FilesMatch>
+
+RemoveHandler .php .phtml .phar .cgi .pl .py .sh .asp .aspx .jsp
+RemoveType .php .phtml .phar .cgi .pl .py .sh .asp .aspx .jsp

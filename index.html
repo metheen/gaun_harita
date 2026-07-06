@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html class="light" lang="tr">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta name="theme-color" content="#3d6922"/>
+<title>GAÜN Kampüs Haritası - Yol Bulma</title>
+<link rel="manifest" href="/manifest.json"/>
+<link rel="apple-touch-icon" href="/assets/icons/icon-192.png"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<link rel="stylesheet" href="/assets/css/tailwind.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+  (() => {
+    const root = document.documentElement;
+    const storedLang = localStorage.getItem('gaun_lang');
+    // Kullanıcının kendi seçimi HER ZAMAN önceliklidir; hiç seçim yoksa
+    // (ilk ziyaret) Ayarlar sayfasından gelen varsayılan dile düşülür.
+    const configLang = window.GAUN_CONFIG && window.GAUN_CONFIG.settings && window.GAUN_CONFIG.settings.defaultLanguage;
+    const lang = storedLang === 'en' ? 'en' : (storedLang === 'tr' ? 'tr' : (configLang === 'en' ? 'en' : 'tr'));
+    const theme = localStorage.getItem('gaun_theme') === 'dark' ? 'dark' : 'light';
+    root.lang = lang;
+    root.classList.toggle('dark', theme === 'dark');
+    root.classList.toggle('light', theme !== 'dark');
+  })();
+</script>
+<style>
+  body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24; }
+
+  /* Glass: daha opak + saturate → harita üstünde okunabilirlik korunur */
+  .glass-effect {
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+  }
+  .soft-shadow { box-shadow: 0 1px 2px rgba(25,29,21,0.06), 0 12px 32px rgba(25,29,21,0.10); }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Leaflet must sit under our overlays */
+  #map { z-index: 0; }
+
+  /* Keşfet bölümü: kategori aç/kapa oku */
+  .exp-chev { transition: transform .2s ease; }
+
+  /* Rich Leaflet popups (unchanged behaviour, refreshed styling) */
+  .leaflet-popup-content { max-width: 300px; margin: 16px 18px; }
+  .leaflet-popup-content-wrapper {
+    border-radius: 20px;
+    box-shadow: 0 2px 6px rgba(25,29,21,0.08), 0 18px 44px rgba(25,29,21,0.18);
+    border: 1px solid rgba(25,29,21,0.05);
+  }
+  .leaflet-popup-tip { box-shadow: 0 2px 6px rgba(25,29,21,0.12); }
+  .popup-title { font-weight: 800; font-size: 15.5px; line-height: 1.3; letter-spacing: -0.01em; margin-bottom: 5px; color:#191d15; }
+  .popup-type {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.02em;
+    color: #27520b; background: #e4efd8; border: 1px solid #cde2b6;
+    border-radius: 999px; padding: 3px 10px; margin-bottom: 9px;
+  }
+  .popup-info { font-size: 13px; line-height: 1.6; margin-bottom: 8px; color: #42493c; }
+  .popup-depts { font-size: 13px; margin-bottom: 8px; }
+  .popup-depts b { display: block; margin-bottom: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #6f7767; }
+  .popup-depts a.popup-dept { display: block; color: #3d6922; text-decoration: none; padding: 3px 0; font-weight: 600; border-radius: 6px; }
+  .popup-depts a.popup-dept:hover { text-decoration: underline; }
+  .popup-desc { margin-top: 5px; font-size: 12.5px; line-height: 1.55; color: #5a6152; }
+  .popup-img { width: 100%; height: 130px; object-fit: cover; border-radius: 14px; margin-bottom: 10px; display: block; }
+  .popup-rating { color: #e8960c; font-size: 13px; margin-bottom: 8px; letter-spacing: 2px; }
+  .popup-rating span { color: #6f7767; font-size: 12px; letter-spacing: 0; margin-left: 5px; font-weight: 600; }
+  .popup-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .popup-actions a {
+    flex: 1; text-align: center; text-decoration: none; font-size: 12.5px; font-weight: 700;
+    padding: 9px 10px; border-radius: 12px; color: #fff; transition: filter .15s ease, transform .1s ease;
+  }
+  .popup-actions a:hover { filter: brightness(1.08); }
+  .popup-actions a:active { transform: scale(.97); }
+  .popup-actions a.web { background: #515f74; }
+  .popup-actions a.route { background: #3d6922; box-shadow: 0 4px 12px rgba(61,105,34,0.3); }
+
+  /* Bugünkü yemek menüsü kartı (yalnız yemekhane popup'larında) */
+  .popup-menu { margin: 9px 0 8px; padding: 12px 14px; background: #f3f7ee; border: 1px solid #dbe7d0; border-radius: 14px; }
+  .popup-menu-title { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-weight: 800; font-size: 12.5px; color: #27520b; margin-bottom: 7px; }
+  .popup-menu-title .date { font-weight: 500; font-size: 11px; color: #6f7767; white-space: nowrap; }
+  .popup-menu ul { list-style: none; margin: 0; padding: 0; max-height: 132px; overflow-y: auto; }
+  .popup-menu li { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; padding: 3px 0; color: #42493c; border-bottom: 1px dashed rgba(61,105,34,0.10); }
+  .popup-menu li:last-child { border-bottom: none; }
+  .popup-menu li .kcal { color: #6f7767; font-size: 11px; white-space: nowrap; }
+  .popup-menu .empty { font-size: 12.5px; color: #6f7767; font-style: italic; }
+  .popup-menu .menu-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 11px; color: #6f7767; }
+  .popup-menu .menu-foot a { color: #3d6922; font-weight: 700; text-decoration: none; }
+  .popup-menu .menu-foot a:hover { text-decoration: underline; }
+
+  /* Hızlı ihtiyaç kısayolları */
+  .quick-chip {
+    height: 38px; padding: 0 15px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+    color: #191d15; background: rgba(255,255,255,0.92); border: 1px solid rgba(25,29,21,0.08);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 1px 2px rgba(25,29,21,0.05), 0 6px 16px rgba(25,29,21,0.07);
+    transition: transform .12s ease, background .12s ease, color .12s ease, border-color .12s ease;
+  }
+  .quick-chip:hover { background: #fff; border-color: rgba(61,105,34,0.3); }
+  .quick-chip:active { transform: scale(.96); }
+  .quick-chip.active { background: #3d6922; color: #fff; border-color: #3d6922; box-shadow: 0 4px 14px rgba(61,105,34,0.35); }
+  .quick-chip .material-symbols-outlined { font-size: 18px; color: #3d6922; }
+  .quick-chip.active .material-symbols-outlined { color: #fff; }
+
+  /* Rota türü seçici */
+  .route-mode {
+    min-height: 38px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center;
+    gap: 6px; font-size: 12.5px; font-weight: 700; color: #6f7767; transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+  }
+  .route-mode .material-symbols-outlined { font-size: 18px; }
+  .route-mode:hover { color: #42493c; }
+  .route-mode.active { background: #fff; color: #27520b; box-shadow: 0 1px 3px rgba(25,29,21,0.10), 0 3px 8px rgba(25,29,21,0.06); }
+
+  /* Kampüs asistanı */
+  .assistant-shell {
+    width: 100%; max-width: 480px; border-radius: 22px; overflow: hidden;
+    box-shadow: 0 1px 2px rgba(25,29,21,0.05), 0 14px 36px rgba(25,29,21,0.10);
+  }
+  .assistant-messages { max-height: 220px; overflow-y: auto; padding: 12px 14px 4px; }
+  .assistant-msg {
+    max-width: 92%; margin-bottom: 8px; padding: 9px 12px; border-radius: 16px;
+    font-size: 12.5px; line-height: 1.45; color: #191d15;
+  }
+  .assistant-msg.user { margin-left: auto; background: #3d6922; color: #fff; border-bottom-right-radius: 5px; box-shadow: 0 3px 10px rgba(61,105,34,0.25); }
+  .assistant-msg.bot { background: #f3f5ee; border: 1px solid rgba(25,29,21,0.05); border-bottom-left-radius: 5px; }
+  .assistant-options { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 14px 10px; }
+  .assistant-option {
+    border-radius: 999px; padding: 7px 12px; font-size: 12px; font-weight: 700;
+    background: #fff; color: #27520b; border: 1px solid rgba(61,105,34,0.25);
+    transition: background .12s ease, transform .1s ease;
+  }
+  .assistant-option:hover { background: #f0f6e9; }
+  .assistant-option:active { transform: scale(.96); }
+  .assistant-suggestion {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(61,105,34,0.14);
+  }
+  .assistant-suggestion button {
+    border-radius: 999px; padding: 7px 12px; background: #3d6922; color: #fff; font-weight: 700; font-size: 11px;
+    box-shadow: 0 3px 8px rgba(61,105,34,0.3);
+  }
+  .assistant-location-list { display: grid; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(61,105,34,0.14); }
+  .assistant-location-choice {
+    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 10px; border-radius: 12px; background: #fff; border: 1px solid rgba(25,29,21,0.06);
+    color: #27520b; font-size: 12px; font-weight: 700; text-align: left;
+    transition: border-color .12s ease, background .12s ease;
+  }
+  .assistant-location-choice:hover { border-color: rgba(61,105,34,0.35); background: #fbfdf9; }
+  .assistant-location-choice span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .assistant-location-choice .material-symbols-outlined { font-size: 16px; color: #3d6922; flex: 0 0 auto; }
+  .assistant-links { display: grid; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(61,105,34,0.14); }
+  .assistant-link {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 10px; border-radius: 12px; background: #fff; border: 1px solid rgba(25,29,21,0.06);
+    color: #27520b; text-decoration: none; font-size: 12px; font-weight: 700;
+    transition: border-color .12s ease;
+  }
+  .assistant-link:hover { border-color: rgba(61,105,34,0.35); }
+  .assistant-link span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .assistant-link .material-symbols-outlined { font-size: 16px; color: #3d6922; }
+
+  .chip-active { background: #3d6922 !important; color: #fff !important; border-color: #3d6922 !important; box-shadow: 0 4px 14px rgba(61,105,34,0.35) !important; }
+  .chip-active .chip-name { color: #fff !important; }
+
+  /* Keşfet listesi JS ile çizildiği için ölçüler CSS'te sabitlenir. */
+  #explorer { display: grid; gap: 2px; }
+  #explorer .exp-head {
+    width: 100%; min-height: 42px; display: flex; align-items: center; gap: 10px;
+    padding: 7px 8px; border-radius: 14px; overflow: hidden; text-align: left;
+    transition: background .15s ease, transform .1s ease;
+  }
+  #explorer .exp-head:hover,
+  #explorer .exp-item:hover { background: rgb(var(--color-surface-container-low)); }
+  #explorer .exp-head:active { transform: scale(.99); }
+  #explorer .exp-head > span:first-child {
+    width: 10px; height: 10px; border-radius: 999px; flex: 0 0 10px;
+    box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(25,29,21,.16);
+  }
+  #explorer .exp-head > span:nth-child(2) {
+    min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 13.5px !important; line-height: 1.25; font-weight: 650; color: rgb(var(--color-on-surface));
+  }
+  #explorer .exp-head > span:nth-child(3) {
+    min-width: 28px; height: 22px; padding: 0 7px; border-radius: 999px; flex: 0 0 auto;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px !important; line-height: 1; font-weight: 800; color: rgb(var(--color-outline));
+    background: rgb(var(--color-surface-container)); font-variant-numeric: tabular-nums;
+  }
+  #explorer .exp-chev {
+    width: 20px; height: 20px; flex: 0 0 20px; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 20px !important; line-height: 1; color: rgb(var(--color-outline));
+  }
+  #explorer .exp-body { padding: 0 8px 6px 22px; }
+  #explorer .exp-item {
+    width: 100%; min-height: 34px; display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 12px; overflow: hidden; text-align: left;
+    transition: background .15s ease;
+  }
+  #explorer .exp-item > span:first-child {
+    width: 6px; height: 6px; border-radius: 999px; flex: 0 0 6px;
+  }
+  #explorer .exp-item > span:nth-child(2) {
+    min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 13px !important; line-height: 1.25; font-weight: 500; color: rgb(var(--color-on-surface));
+  }
+  #explorer .exp-item > span:nth-child(3) {
+    max-width: 88px; flex: 0 0 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 10px !important; line-height: 1.2; color: rgb(var(--color-outline));
+  }
+
+  /* Kullanıcı konumu: nabız atan nokta (GPU dostu: yalnız transform/opacity) */
+  .user-dot { position: relative; width: 18px; height: 18px; }
+  .user-dot .core {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: #1a73e8; border: 3px solid #fff;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+  }
+  .user-dot .pulse {
+    position: absolute; inset: -8px; border-radius: 50%;
+    background: rgba(26,115,232,0.35);
+    animation: userPulse 2s ease-out infinite;
+  }
+  @keyframes userPulse {
+    0%   { transform: scale(0.5); opacity: 0.9; }
+    100% { transform: scale(1.8); opacity: 0; }
+  }
+
+  /* Seçili konum marker'ı: halka nabzı */
+  .loc-dot .ring {
+    position: absolute; inset: -7px; border-radius: 50%;
+    border: 3px solid currentColor; opacity: 0;
+    animation: ringPulse 1.6s ease-out infinite;
+  }
+  @keyframes ringPulse {
+    0%   { transform: scale(0.6); opacity: 0.8; }
+    100% { transform: scale(1.35); opacity: 0; }
+  }
+
+  /* Bugünkü etkinlik işareti: konum marker'larından ayrı, hover tooltip'li */
+  .event-dot { position: relative; width: 30px; height: 30px; }
+  .event-dot .event-pulse {
+    position: absolute; inset: 1px; border-radius: 999px; background: rgba(255,111,0,.28);
+    animation: eventPulse 1.8s ease-out infinite;
+  }
+  .event-dot .event-core {
+    position: absolute; inset: 4px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+    background: #ff6f00; color: #fff; border: 2px solid #fff;
+    box-shadow: 0 2px 8px rgba(25,29,21,.32), 0 0 0 1px rgba(255,111,0,.22);
+  }
+  .event-dot .material-symbols-outlined { font-size: 15px; line-height: 1; font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20; }
+  .event-dot .event-count {
+    position: absolute; right: -4px; top: -3px; min-width: 16px; height: 16px; padding: 0 4px;
+    display: inline-flex; align-items: center; justify-content: center; border-radius: 999px;
+    background: #191d15; color: #fff; border: 1px solid #fff; font-size: 10px; font-weight: 800; line-height: 1;
+  }
+  @keyframes eventPulse {
+    0% { transform: scale(.58); opacity: .9; }
+    100% { transform: scale(1.55); opacity: 0; }
+  }
+  .leaflet-tooltip.event-tooltip {
+    padding: 0; border: 0; border-radius: 16px; background: transparent; box-shadow: none;
+  }
+  .leaflet-tooltip.event-tooltip::before { display: none; }
+  .event-tip {
+    width: 260px; max-width: min(260px, calc(100vw - 32px)); padding: 12px 13px;
+    border-radius: 16px; background: rgba(255,255,255,.97); color: #191d15;
+    border: 1px solid rgba(25,29,21,.08);
+    box-shadow: 0 2px 8px rgba(25,29,21,.12), 0 14px 32px rgba(25,29,21,.16);
+    backdrop-filter: blur(14px) saturate(1.25); -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  }
+  .event-tip-kicker { font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #bf4f00; margin-bottom: 6px; }
+  .event-tip-place { font-size: 12px; line-height: 1.3; font-weight: 800; color: #42493c; margin-bottom: 7px; }
+  .event-tip-item + .event-tip-item { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(25,29,21,.08); }
+  .event-tip-title { font-size: 13px; line-height: 1.35; font-weight: 800; color: #191d15; }
+  .event-tip-meta { margin-top: 3px; font-size: 11px; line-height: 1.35; font-weight: 600; color: #6f7767; }
+  .event-tip-desc { margin-top: 6px; font-size: 11.5px; line-height: 1.45; color: #51594a; white-space: normal; }
+  .event-tip-more { margin-top: 8px; font-size: 11px; font-weight: 800; color: #bf4f00; }
+
+  /* Canlı takip açıkken konum butonu */
+  .tracking-active { background: #3d6922 !important; }
+  .tracking-active .material-symbols-outlined { color: #fff !important; }
+
+  /* Bugün Kampüste bülten paneli */
+  .bulletin-tab {
+    padding: 6px 13px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    color: #515f74; background: #edf0e7; transition: all .15s;
+  }
+  .bulletin-tab:hover { background: #e2e7d9; }
+  .bulletin-tab.active { background: #3d6922; color: #fff; box-shadow: 0 3px 8px rgba(61,105,34,0.3); }
+  .bulletin-item {
+    display: block; padding: 9px 11px; border-radius: 12px; text-decoration: none;
+    transition: background .15s;
+  }
+  .bulletin-item:hover { background: rgba(61,105,34,0.07); }
+  .bulletin-item .bi-title { font-size: 13px; font-weight: 500; color: #191d15; line-height: 1.4; }
+  .bulletin-item .bi-date { font-size: 11px; color: #6f7767; margin-top: 2px; }
+  .bulletin-empty { padding: 16px 12px; font-size: 12.5px; color: #6f7767; font-style: italic; text-align: center; }
+  .dark .glass-effect {
+    background: rgba(28, 34, 27, 0.9);
+    border-color: rgba(234, 239, 229, 0.12);
+  }
+  .dark .soft-shadow { box-shadow: 0 1px 2px rgba(0,0,0,0.28), 0 16px 36px rgba(0,0,0,0.42); }
+  .dark .leaflet-container { background: #111512; }
+  .dark .leaflet-tile {
+    filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.65);
+  }
+  .dark .leaflet-control-attribution {
+    background: rgba(22,27,22,0.85); color: rgb(var(--color-outline));
+  }
+  .dark .leaflet-control-attribution a { color: rgb(var(--color-primary)); }
+  .dark .route-mode { color: rgb(var(--color-outline)); }
+  .dark .event-dot .event-core { border-color: #111a10; box-shadow: 0 2px 10px rgba(0,0,0,.5), 0 0 0 1px rgba(255,169,77,.28); }
+  .dark .event-dot .event-count { background: #fff; color: #111a10; border-color: #111a10; }
+  .dark .event-tip {
+    background: rgba(28,34,27,.96); color: rgb(var(--color-on-surface));
+    border-color: rgba(234,239,229,.12); box-shadow: 0 2px 8px rgba(0,0,0,.35), 0 16px 34px rgba(0,0,0,.42);
+  }
+  .dark .event-tip-kicker,
+  .dark .event-tip-more { color: #ffb36b; }
+  .dark .event-tip-place,
+  .dark .event-tip-title { color: rgb(var(--color-on-surface)); }
+  .dark .event-tip-meta,
+  .dark .event-tip-desc { color: rgb(var(--color-outline)); }
+  .dark .route-mode:hover { color: rgb(var(--color-on-surface-variant)); }
+  .dark .hover\:bg-black\/5:hover { background: rgba(255,255,255,0.08); }
+  .dark .leaflet-popup-content-wrapper,
+  .dark .leaflet-popup-tip { background: rgb(var(--color-surface)); color: rgb(var(--color-on-surface)); border-color: rgba(234,239,229,0.12); }
+  .dark .popup-title,
+  .dark .bulletin-item .bi-title { color: rgb(var(--color-on-surface)); }
+  .dark .popup-info,
+  .dark .popup-desc,
+  .dark .popup-menu li,
+  .dark .assistant-msg { color: rgb(var(--color-on-surface-variant)); }
+  .dark .popup-type,
+  .dark .popup-menu,
+  .dark .assistant-msg.bot { background: rgb(var(--color-surface-container)); border-color: rgba(234,239,229,0.10); }
+  .dark .popup-type,
+  .dark .popup-menu-title,
+  .dark .popup-menu .menu-foot a,
+  .dark .popup-depts a.popup-dept,
+  .dark .assistant-link,
+  .dark .assistant-location-choice,
+  .dark .assistant-option { color: rgb(var(--color-primary)); }
+  .dark .popup-depts b,
+  .dark .popup-rating span,
+  .dark .popup-menu-title .date,
+  .dark .popup-menu li .kcal,
+  .dark .popup-menu .empty,
+  .dark .popup-menu .menu-foot,
+  .dark .bulletin-item .bi-date,
+  .dark .bulletin-empty { color: rgb(var(--color-outline)); }
+  .dark .quick-chip,
+  .dark .assistant-option,
+  .dark .assistant-link,
+  .dark .assistant-location-choice {
+    background: rgb(var(--color-surface-container));
+    color: rgb(var(--color-on-surface));
+    border-color: rgba(234,239,229,0.12);
+  }
+  .dark .quick-chip:hover,
+  .dark .assistant-option:hover,
+  .dark .assistant-location-choice:hover,
+  .dark .bulletin-item:hover { background: rgb(var(--color-surface-container-high)); }
+  .dark .quick-chip .material-symbols-outlined,
+  .dark .assistant-link .material-symbols-outlined,
+  .dark .assistant-location-choice .material-symbols-outlined { color: rgb(var(--color-primary)); }
+  .dark .route-mode.active { background: rgb(var(--color-surface-container-highest)); color: rgb(var(--color-on-primary-container)); }
+  .dark .bulletin-tab { background: rgb(var(--color-surface-container)); color: rgb(var(--color-on-surface-variant)); }
+  .dark .bulletin-tab:hover { background: rgb(var(--color-surface-container-high)); }
+  .dark .hover\:bg-white:hover { background-color: rgb(var(--color-surface-container-low)); }
+  #sidebar {
+    background-color: rgb(var(--color-surface, 248 249 244)) !important;
+    opacity: 1;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    isolation: isolate;
+  }
+  .dark :is(
+    .glass-effect,
+    #sidebar,
+    #directionsCard,
+    #bulletinPanel,
+    #searchResults,
+    .assistant-shell,
+    .quick-chip,
+    .route-mode,
+    .search-item,
+    .bulletin-tab,
+    .bulletin-item,
+    .assistant-msg,
+    .assistant-option,
+    .assistant-link,
+    .assistant-location-choice,
+    .leaflet-popup-content-wrapper
+  ) {
+    color: #fff !important;
+  }
+  .dark :is(
+    .text-on-background,
+    .text-on-surface,
+    .text-on-surface-variant,
+    .text-on-surface\/80,
+    .text-outline,
+    .text-outline\/50,
+    .chip-name,
+    #langToggleLabel,
+    #dirName,
+    #dirMeta,
+    #dirStats,
+    #sidebar h1,
+    #sidebar p,
+    #sidebar span:not(.material-symbols-outlined),
+    #explorer .exp-head span,
+    #explorer .exp-item span,
+    #filterChips button span,
+    #quickIntents button span:not(.material-symbols-outlined),
+    #nearbyItems span,
+    .search-item p,
+    .route-mode span:not(.material-symbols-outlined),
+    .bulletin-item .bi-title,
+    .bulletin-item .bi-date,
+    .bulletin-empty,
+    .assistant-msg,
+    .assistant-option,
+    .assistant-link span,
+    .assistant-location-choice span,
+    .popup-title,
+    .popup-type,
+    .popup-info,
+    .popup-desc,
+    .popup-depts b,
+    .popup-menu-title,
+    .popup-menu li,
+    .popup-menu .empty,
+    .popup-menu .menu-foot,
+    .popup-rating span
+  ) {
+    color: #fff !important;
+  }
+  .dark :is(input, textarea) {
+    color: #fff !important;
+  }
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    color: #fff !important;
+    opacity: 1;
+  }
+  .dark :is(.material-symbols-outlined.text-outline, .material-symbols-outlined.text-primary) {
+    color: #fff !important;
+  }
+  .dark #sidebar {
+    background: #111a10 !important;
+    color: #fff !important;
+  }
+  .dark #sidebar :is(h1, h2, h3, p, button, span:not(.material-symbols-outlined), .text-on-background, .text-on-surface, .text-on-surface-variant, .text-outline, .text-outline\/50, .chip-name) {
+    color: #fff !important;
+  }
+  .dark #sidebar :is(.bg-surface-container, .bg-surface-container-low, .exp-head:hover, .exp-item:hover, .nearby-item:hover) {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+  }
+  .dark #sidebar .rounded-full.bg-white {
+    background-color: #fff !important;
+  }
+  .dark #routeModeGroup {
+    background: rgba(248, 250, 245, 0.96) !important;
+  }
+  .dark #routeModeGroup .route-mode,
+  .dark #routeModeGroup .route-mode span {
+    color: #000 !important;
+  }
+  .dark #routeModeGroup .route-mode.active {
+    background: #fff !important;
+    color: #000 !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.16), 0 4px 10px rgba(0,0,0,0.10) !important;
+  }
+  .dark #routeModeGroup .material-symbols-outlined {
+    color: #000 !important;
+  }
+  .dark #sidebar #routeModeGroup :is(.route-mode, .route-mode span, .material-symbols-outlined) {
+    color: #000 !important;
+  }
+  .dark body #directionsCard #routeModeGroup .route-mode #routeWalkLabel,
+  .dark body #directionsCard #routeModeGroup .route-mode #routeDriveLabel {
+    color: #000 !important;
+  }
+
+  /* ---- Mobil üst bar (Tailwind md kırılımının altı) ------------------------
+     Dar ekranda 4 sabit buton arama kutusunu ~120px'e sıkıştırıyordu; arama
+     sonuçları dropdown'ı da aynı genişlikte açıldığından konum adları tek
+     harfe kadar kesiliyordu. Çözüm: arama kendi TAM GENİŞLİK satırına iner
+     (butonlar üst satırda kalır). #searchWrap'e bağlı searchResults dropdown'ı
+     da otomatik tam genişlik olur. ≥768px'te (masaüstü) hiçbir şey değişmez. */
+  @media (max-width: 767px) {
+    #topBar { flex-wrap: wrap; }
+    #searchWrap { order: 10; flex-basis: 100%; }
+    /* Menü solda; asistan/dil/tema butonları sağa yaslanır. */
+    #assistantToggle { margin-left: auto; }
+  }
+</style>
+</head>
+<body class="bg-background text-on-background overflow-hidden selection:bg-primary-container/40">
+<div class="flex h-screen w-full relative">
+
+  <!-- Backdrop for mobile drawer -->
+  <div id="backdrop" class="hidden fixed inset-0 bg-black/40 backdrop-blur-[2px] z-30"></div>
+
+  <!-- Main map area -->
+  <main class="flex-1 relative overflow-hidden">
+
+    <!-- Top overlay: search + assistant + chips -->
+    <div class="absolute top-md left-md right-md md:top-lg md:left-lg md:right-lg z-20 flex flex-col gap-sm md:gap-md pointer-events-none max-w-4xl">
+      <div id="topBar" class="w-full md:w-[480px] pointer-events-auto flex items-center gap-sm relative">
+        <button id="panelToggle" title="Menü" class="shrink-0 w-12 h-12 glass-effect soft-shadow rounded-2xl flex items-center justify-center active:scale-90 transition hover:bg-white">
+          <span class="material-symbols-outlined">menu</span>
+        </button>
+        <div id="searchWrap" class="relative group flex-1">
+          <div class="absolute left-md top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+            <span class="material-symbols-outlined text-outline group-focus-within:text-primary transition-colors">search</span>
+          </div>
+          <input id="search" autocomplete="off" class="w-full h-12 pl-[52px] pr-10 glass-effect soft-shadow rounded-full border-none focus:ring-2 focus:ring-primary/40 focus:outline-none transition-all placeholder:text-outline/70 text-[14px] font-medium" placeholder="Bina, fakülte veya yer arayın..." type="text"/>
+          <button id="searchClear" type="button" title="Aramayı temizle" class="hidden absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center hover:bg-black/5 active:scale-90 transition">
+            <span class="material-symbols-outlined text-outline text-[18px]">close</span>
+          </button>
+          <div id="searchResults" class="hidden absolute top-full left-0 right-0 mt-sm glass-effect soft-shadow rounded-2xl overflow-hidden">
+            <div class="max-h-80 overflow-y-auto no-scrollbar"></div>
+          </div>
+        </div>
+        <button id="assistantToggle" title="Kampüs Asistanı" class="shrink-0 w-12 h-12 glass-effect soft-shadow rounded-2xl flex items-center justify-center active:scale-90 transition hover:bg-white">
+          <span class="material-symbols-outlined text-primary">chat</span>
+        </button>
+        <button id="langToggle" type="button" title="English" class="shrink-0 w-12 h-12 glass-effect soft-shadow rounded-2xl flex items-center justify-center active:scale-90 transition hover:bg-white">
+          <span id="langToggleLabel" class="text-[12px] font-extrabold tracking-wide text-primary">TR</span>
+        </button>
+        <button id="themeToggle" type="button" title="Koyu tema" class="shrink-0 w-12 h-12 glass-effect soft-shadow rounded-2xl flex items-center justify-center active:scale-90 transition hover:bg-white">
+          <span id="themeToggleIcon" class="material-symbols-outlined text-primary">dark_mode</span>
+        </button>
+        <div id="assistantBox" class="hidden assistant-shell glass-effect pointer-events-auto absolute top-full left-0 right-0 mt-sm">
+          <div id="assistantMessages" class="assistant-messages hidden no-scrollbar"></div>
+          <div id="assistantOptions" class="assistant-options hidden"></div>
+          <form id="assistantForm" class="flex items-center gap-sm pl-md pr-sm py-sm">
+            <span class="w-8 h-8 rounded-full bg-primary-container/60 text-on-primary-container flex items-center justify-center shrink-0">
+              <span class="material-symbols-outlined text-[19px]">psychology</span>
+            </span>
+            <input id="assistantInput" autocomplete="off" class="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none text-[13px] placeholder:text-outline/70 px-0" placeholder="Kampüs asistanına sor: öğrenci belgesi alacağım…" type="text"/>
+            <button type="submit" title="Sor" class="w-9 h-9 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-md shadow-primary/30 hover:shadow-lg active:scale-90 transition">
+              <span class="material-symbols-outlined text-[18px]">send</span>
+            </button>
+          </form>
+        </div>
+      </div>
+      <div id="quickIntents" class="flex gap-sm overflow-x-auto pb-1 pointer-events-auto no-scrollbar"></div>
+      <div id="filterChips" class="flex gap-sm overflow-x-auto pb-2 pointer-events-auto no-scrollbar"></div>
+    </div>
+
+    <!-- Leaflet map -->
+    <div id="map" class="absolute inset-0 bg-[#e8efe4]"></div>
+
+    <!-- Map controls -->
+    <div class="absolute bottom-lg right-md md:bottom-xl md:right-xl z-20 flex flex-col gap-sm">
+      <div class="flex flex-col glass-effect soft-shadow rounded-2xl overflow-hidden">
+        <button id="zoomIn" class="w-12 h-12 flex items-center justify-center hover:bg-white transition-colors border-b border-outline-variant/20 active:scale-90">
+          <span class="material-symbols-outlined font-bold">add</span>
+        </button>
+        <button id="zoomOut" class="w-12 h-12 flex items-center justify-center hover:bg-white transition-colors active:scale-90">
+          <span class="material-symbols-outlined font-bold">remove</span>
+        </button>
+      </div>
+      <button id="resetBtn" title="İşaretçileri temizle" class="w-12 h-12 glass-effect soft-shadow rounded-2xl flex items-center justify-center hover:bg-white transition-all active:scale-90 group">
+        <span class="material-symbols-outlined group-hover:rotate-180 transition-transform duration-500">restart_alt</span>
+      </button>
+      <button id="locateBtn" title="Konumum" class="w-12 h-12 glass-effect soft-shadow rounded-2xl flex items-center justify-center hover:bg-white transition-all active:scale-90 group">
+        <span class="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">my_location</span>
+      </button>
+      <button id="bulletinBtn" title="Bugün Kampüste" class="hidden w-12 h-12 glass-effect soft-shadow rounded-2xl flex items-center justify-center hover:bg-white transition-all active:scale-90 group">
+        <span class="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">campaign</span>
+      </button>
+    </div>
+
+    <!-- Bugün Kampüste: cache'lenmiş GAÜN bülteni (kapatılabilir) -->
+    <!-- Mobil: arama/çiplerin altında tam genişlik; masaüstü: sağ-alt, kontrollerin yanında -->
+    <div id="bulletinPanel" class="hidden absolute top-36 left-md right-md md:top-auto md:left-auto md:bottom-xl md:right-28 md:w-80 glass-effect soft-shadow rounded-3xl z-20 overflow-hidden">
+      <div class="flex items-center justify-between px-lg pt-lg pb-sm">
+        <h3 class="font-bold text-on-surface text-[15px] flex items-center gap-sm tracking-tight">
+          <span class="material-symbols-outlined text-primary text-[20px]">campaign</span>
+          <span id="bulletinTitleText">Bugün Kampüste</span>
+        </h3>
+        <button id="bulletinClose" class="p-xs rounded-full hover:bg-surface-container active:scale-90 transition">
+          <span class="material-symbols-outlined text-outline text-[20px]">close</span>
+        </button>
+      </div>
+      <div id="bulletinTabs" class="flex gap-xs px-lg pb-sm overflow-x-auto no-scrollbar"></div>
+      <div id="bulletinList" class="px-sm pb-sm max-h-72 overflow-y-auto no-scrollbar"></div>
+      <div class="px-lg py-sm border-t border-outline-variant/25 text-[10px] text-outline">
+        <span id="bulletinSourceText">Kaynak: GAÜN resmi siteleri • önbellekten sunulur</span>
+      </div>
+    </div>
+
+    <!-- Directions action card (shown on selection) -->
+    <div id="directionsCard" class="hidden absolute bottom-lg left-md md:bottom-xl md:left-xl w-80 max-w-[calc(100%-2rem)] glass-effect soft-shadow rounded-3xl p-lg z-20">
+      <div class="flex items-start justify-between mb-md gap-md">
+        <div class="space-y-1 min-w-0">
+          <h3 id="dirName" class="text-[15px] font-bold text-on-surface truncate tracking-tight"></h3>
+	      <div class="flex items-center gap-xs">
+	        <span class="material-symbols-outlined text-[14px] text-outline">location_on</span>
+	        <p id="dirMeta" class="text-[12px] text-outline font-medium truncate"></p>
+	      </div>
+	      <p id="dirStats" class="text-xs text-on-surface-variant leading-relaxed"></p>
+	    </div>
+	    <div class="flex shrink-0 gap-xs">
+	      <button id="dirShare" title="Linki kopyala" class="p-xs rounded-full hover:bg-surface-container active:scale-90 transition">
+	        <span class="material-symbols-outlined text-outline text-[20px]">share</span>
+	      </button>
+	      <button id="dirClose" class="p-xs rounded-full hover:bg-surface-container active:scale-90 transition">
+	        <span class="material-symbols-outlined text-outline">close</span>
+	      </button>
+	    </div>
+	  </div>
+      <div id="routeModeGroup" class="grid grid-cols-2 gap-xs mb-sm bg-surface-container rounded-2xl p-xs" role="group" aria-label="Rota türü">
+        <button type="button" class="route-mode active" data-mode="walk">
+          <span class="material-symbols-outlined">directions_walk</span>
+          <span id="routeWalkLabel">Yürüme</span>
+        </button>
+        <button type="button" class="route-mode" data-mode="drive">
+          <span class="material-symbols-outlined">directions_car</span>
+          <span id="routeDriveLabel">Araç</span>
+        </button>
+      </div>
+      <button id="dirGo" type="button" class="w-full h-12 bg-primary text-on-primary rounded-2xl font-bold text-[14px] flex items-center justify-center gap-sm shadow-lg shadow-primary/30 hover:shadow-xl hover:brightness-110 transition-all active:scale-[0.98]">
+        <span class="material-symbols-outlined text-[20px]">my_location</span>
+        <span id="dirGoLabel">Konumumu Kullan</span>
+      </button>
+    </div>
+  </main>
+
+  <!-- Tek kenar çubuğu: marka + yakınımdakiler + keşfet (lejant birleşik) -->
+  <aside id="sidebar" class="fixed inset-y-0 right-0 w-80 max-w-[85vw] bg-surface border-l border-outline-variant/40 flex flex-col z-40 translate-x-full transition-transform duration-300 shadow-2xl">
+    <div class="p-lg flex items-center gap-md border-b border-outline-variant/30">
+      <div class="w-11 h-11 rounded-full bg-white ring-1 ring-outline-variant/40 shadow-md shrink-0 overflow-hidden flex items-center justify-center">
+        <img src="uploads/Gaziantep-universitesi-logo.jpg" alt="GAÜN logo" class="w-full h-full object-contain"/>
+      </div>
+      <div class="overflow-hidden flex-1">
+        <h1 class="text-[16px] font-bold tracking-tight text-on-background">GAÜN Yol Bul</h1>
+        <p id="sidebarKicker" class="text-[10.5px] text-outline uppercase tracking-[0.16em] font-semibold">Kampüs Rehberi</p>
+      </div>
+      <button id="sidebarClose" class="p-sm rounded-full hover:bg-surface-container active:scale-90 transition">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+
+    <div class="flex-1 overflow-y-auto no-scrollbar">
+      <!-- Yakınımdakiler: canlı konum açıkken en yakın yerler -->
+      <section id="nearbySection" class="hidden px-md pt-lg">
+        <h3 class="text-[10px] text-outline uppercase font-bold tracking-[0.2em] mb-sm px-sm flex items-center gap-xs">
+          <span class="material-symbols-outlined text-[14px] text-primary">near_me</span>
+          <span id="nearbyTitleText">Yakınımdakiler</span>
+        </h3>
+        <div id="nearbyItems" class="space-y-0.5"></div>
+        <div class="h-px bg-outline-variant/30 mt-lg"></div>
+      </section>
+
+      <!-- Keşfet: kategoriler (renkler = lejant) -->
+      <section class="px-md py-lg">
+        <h3 id="explorerTitleText" class="text-[10px] text-outline uppercase font-bold tracking-[0.2em] mb-sm px-sm">Keşfet</h3>
+        <div id="explorer" class="space-y-0.5"></div>
+      </section>
+    </div>
+
+    <div class="p-md pt-0 space-y-sm">
+      <!-- Görüş ve öneri: kurumsal geri bildirim kanalı. Adres, admin
+           panelindeki Ayarlar > İletişim E-posta alanından yönetilir
+           (GAUN_CONFIG.settings.contactEmail); boşsa Harita@gantep.edu.tr
+           varsayılanına düşer. href/konu i18n.js applyLocale() içinde
+           aktif dile göre kurulur. -->
+      <a id="feedbackLink" href="mailto:Harita@gantep.edu.tr" class="p-md bg-surface-container-low rounded-2xl border border-outline-variant/20 flex items-center gap-sm hover:bg-surface-container hover:border-primary/30 active:scale-[0.98] transition group">
+        <span class="material-symbols-outlined text-primary text-[18px] shrink-0">mail</span>
+        <span class="flex-1 overflow-hidden">
+          <span id="feedbackTitleText" class="block text-[13px] font-bold text-on-surface tracking-tight">Görüş ve Öneri</span>
+          <span id="feedbackHintText" class="block text-[11.5px] text-on-surface-variant leading-snug">Geri bildiriminizi e-posta ile iletin</span>
+        </span>
+        <span class="material-symbols-outlined text-outline text-[16px] shrink-0 group-hover:text-primary transition-colors">arrow_forward</span>
+      </a>
+
+      <div class="p-md bg-surface-container-low rounded-2xl border border-outline-variant/20 flex items-start gap-sm">
+        <span class="material-symbols-outlined text-primary text-[18px] mt-0.5 shrink-0">info</span>
+        <p class="text-[12px] text-on-surface-variant leading-relaxed">
+          <span id="sidebarInfoText">Renkler kategorileri gösterir. Kategoriye dokunup konum seçin; arama ve üstteki filtrelerle daraltın.</span>
+        </p>
+      </div>
+    </div>
+  </aside>
+
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="assets/js/i18n.js?v=20260706-route-fallback"></script>
+<script src="assets/js/analytics.js"></script>
+<script src="assets/js/popup.js?v=20260706-assistant-route"></script>
+<script src="assets/js/map.js"></script>
+<script src="assets/js/routing.js?v=20260706-route-fallback"></script>
+<script src="assets/js/search.js?v=20260706-search-plurals"></script>
+<script src="assets/js/assistant.js?v=20260706-food-routing"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

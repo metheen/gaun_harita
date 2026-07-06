@@ -1,0 +1,17 @@
+{
+  "name": "gaun-kampus-haritasi",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i ./assets/css/tailwind.css -o ./public/assets/css/tailwind.css --minify",
+    "watch:css": "tailwindcss -i ./assets/css/tailwind.css -o ./public/assets/css/tailwind.css --watch",
+    "test:js": "node --test tests/js/*.test.js",
+    "test:e2e": "playwright test",
+    "test": "npm run test:js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@tailwindcss/container-queries": "0.1.1",
+    "@tailwindcss/forms": "0.5.10",
+    "tailwindcss": "3.4.17"
+  }
+}

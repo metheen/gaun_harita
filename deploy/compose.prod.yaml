@@ -1,0 +1,93 @@
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD zorunlu}
+      MARIADB_DATABASE: ${DB_NAME:?DB_NAME zorunlu}
+      DB_READ_USER: ${DB_READ_USER:?DB_READ_USER zorunlu}
+      DB_READ_PASS: ${DB_READ_PASS:?DB_READ_PASS zorunlu}
+      DB_WRITE_USER: ${DB_WRITE_USER:?DB_WRITE_USER zorunlu}
+      DB_WRITE_PASS: ${DB_WRITE_PASS:?DB_WRITE_PASS zorunlu}
+    volumes:
+      - dbdata:/var/lib/mysql
+      - ../docker/init/00-schema.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
+      - ../docker/init/01-analytics.sql:/docker-entrypoint-initdb.d/01-analytics.sql:ro
+      - ../docker/init/02-location-i18n.sql:/docker-entrypoint-initdb.d/02-location-i18n.sql:ro
+      - ../docker/init/03-admin-ops.sql:/docker-entrypoint-initdb.d/03-admin-ops.sql:ro
+      - ./db-init/04-app-users.sh:/docker-entrypoint-initdb.d/04-app-users.sh:ro
+      - ../docker/init/05-audit-log.sql:/docker-entrypoint-initdb.d/05-audit-log.sql:ro
+      - ../docker/init/06-location-active.sql:/docker-entrypoint-initdb.d/06-location-active.sql:ro
+      - ../docker/init/07-user-roles.sql:/docker-entrypoint-initdb.d/07-user-roles.sql:ro
+      - ../docker/init/08-data-quality-default-images.sql:/docker-entrypoint-initdb.d/08-data-quality-default-images.sql:ro
+      - ../docker/init/09-baslangic-verisi.sql:/docker-entrypoint-initdb.d/09-baslangic-verisi.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  web:
+    image: gaunharita-web:prod
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:80"
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:?DB_NAME zorunlu}
+      DB_READ_USER: ${DB_READ_USER:?DB_READ_USER zorunlu}
+      DB_READ_PASS: ${DB_READ_PASS:?DB_READ_PASS zorunlu}
+      DB_WRITE_USER: ${DB_WRITE_USER:?DB_WRITE_USER zorunlu}
+      DB_WRITE_PASS: ${DB_WRITE_PASS:?DB_WRITE_PASS zorunlu}
+      ADMIN_AUDIT_SALT: ${ADMIN_AUDIT_SALT:?ADMIN_AUDIT_SALT zorunlu}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      OSRM_BASE_URL: ${OSRM_BASE_URL:-https://router.project-osrm.org}
+      OSRM_WALK_PROFILE: ${OSRM_WALK_PROFILE:-foot}
+      OSRM_DRIVE_PROFILE: ${OSRM_DRIVE_PROFILE:-driving}
+      OSRM_TIMEOUT_MS: ${OSRM_TIMEOUT_MS:-4000}
+      OSRM_DRIVE_BASE_URL: ${OSRM_DRIVE_BASE_URL:-}
+      OSRM_WALK_BASE_URL: ${OSRM_WALK_BASE_URL:-}
+      OSRM_DRIVE_HEALTH_URL: ${OSRM_DRIVE_HEALTH_URL:-}
+      OSRM_WALK_HEALTH_URL: ${OSRM_WALK_HEALTH_URL:-}
+    volumes:
+      - app_private:/var/www/html/private
+      - web_uploads:/var/www/html/public/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "php -r 'exit(@file_get_contents(\"http://127.0.0.1/healthz.php\") === false ? 1 : 0);'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  sync:
+    image: gaunharita-web:prod
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "/var/www/html/docker/sync-scheduler.sh"]
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:?DB_NAME zorunlu}
+      DB_READ_USER: ${DB_READ_USER:?DB_READ_USER zorunlu}
+      DB_READ_PASS: ${DB_READ_PASS:?DB_READ_PASS zorunlu}
+      DB_WRITE_USER: ${DB_WRITE_USER:?DB_WRITE_USER zorunlu}
+      DB_WRITE_PASS: ${DB_WRITE_PASS:?DB_WRITE_PASS zorunlu}
+      ADMIN_AUDIT_SALT: ${ADMIN_AUDIT_SALT:?ADMIN_AUDIT_SALT zorunlu}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      TZ: ${TZ:-Europe/Istanbul}
+      SYNC_RUN_AT: ${SYNC_RUN_AT:-05:10}
+      SYNC_RUN_ON_START: ${SYNC_RUN_ON_START:-false}
+    volumes:
+      - app_private:/var/www/html/private
+      - web_uploads:/var/www/html/public/uploads
+
+volumes:
+  dbdata:
+  app_private:
+  web_uploads:
